@@ -1,0 +1,477 @@
+-- EpicnMar Ap Spam
+repeat task.wait() until game:IsLoaded()
+
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
+local HttpService      = game:GetService("HttpService")
+local ReplicatedStorage= game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer.Character then LocalPlayer.CharacterAdded:Wait() end
+
+local function getGuiParent()
+    if gethui then return gethui() end
+    if game.CoreGui then return game.CoreGui end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- ============================================================
+-- THEME
+-- ============================================================
+local C = {
+    BG         = Color3.fromRGB(18,8,15),
+    BGDeep     = Color3.fromRGB(12,4,10),
+    BGMid      = Color3.fromRGB(26,11,21),
+    BGSurface  = Color3.fromRGB(34,14,27),
+    BGRaised   = Color3.fromRGB(42,18,34),
+    Accent     = Color3.fromRGB(220,40,160),
+    AccentGlow = Color3.fromRGB(255,80,200),
+    AccentDim  = Color3.fromRGB(100,20,75),
+    AccentSoft = Color3.fromRGB(180,30,130),
+    TextPri    = Color3.fromRGB(245,235,242),
+    TextSub    = Color3.fromRGB(160,120,145),
+    TextMuted  = Color3.fromRGB(100,70,90),
+    StateOn    = Color3.fromRGB(100,255,180),
+    Danger     = Color3.fromRGB(255,75,75),
+    Gold       = Color3.fromRGB(255,210,80),
+}
+
+-- ============================================================
+-- ADMIN COMMANDS
+-- ============================================================
+local ALL_CMDS = {"balloon","ragdoll","rocket","inverse","tiny","jail","jumpscare","morph"}
+
+-- Selected commands (user picks which ones to spam)
+local selectedCmds = {}
+for _, cmd in ipairs(ALL_CMDS) do selectedCmds[cmd] = false end
+
+-- Spam keybind
+local spamKey     = "F"
+local rebinding   = false
+local rebindConn  = nil
+
+-- ============================================================
+-- FIRE LOGIC — uses the AdminPanel GUI in PlayerGui
+-- ============================================================
+local function getAdminPanelButtons()
+    local ap = LocalPlayer.PlayerGui:FindFirstChild("AdminPanel")
+    if not ap then return nil, nil end
+    local inner = ap:FindFirstChild("AdminPanel")
+    if not inner then return nil, nil end
+    local content = inner:FindFirstChild("Content")
+    local profiles = inner:FindFirstChild("Profiles")
+    if not content or not profiles then return nil, nil end
+    local csf = content:FindFirstChild("ScrollingFrame")
+    local psf = profiles:FindFirstChild("ScrollingFrame")
+    return csf, psf
+end
+
+local function fireCmd(targetPlayer, cmd)
+    local csf, psf = getAdminPanelButtons()
+    if not csf or not psf then return end
+    local pb = psf:FindFirstChild(targetPlayer.Name)
+    local cb = csf:FindFirstChild(cmd)
+    if not pb or not cb then return end
+    if not getconnections then return end
+    local pconns = getconnections(pb.Activated)
+    local cconns = getconnections(cb.Activated)
+    for _, c in ipairs(cconns) do if c.Function then task.spawn(c.Function) end end
+    for _, c in ipairs(pconns) do if c.Function then task.spawn(c.Function) end end
+end
+
+local lastSpam = 0
+local COOLDOWN = 0.15
+
+local function doSpam()
+    if tick() - lastSpam < COOLDOWN then return end
+    lastSpam = tick()
+
+    local toFire = {}
+    for _, cmd in ipairs(ALL_CMDS) do
+        if selectedCmds[cmd] then table.insert(toFire, cmd) end
+    end
+    if #toFire == 0 then return end
+
+    -- fire at all non-local players
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            for _, cmd in ipairs(toFire) do
+                fireCmd(p, cmd)
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- GUI HELPERS
+-- ============================================================
+local function corner(p, r)
+    local c = Instance.new("UICorner", p); c.CornerRadius = UDim.new(0, r or 8); return c
+end
+local function stroke(p, col, th, tr)
+    local s = Instance.new("UIStroke", p)
+    s.Color = col or C.Accent; s.Thickness = th or 1.5; s.Transparency = tr or 0.3
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; return s
+end
+local function grad(p, c0, c1, rot)
+    local g = Instance.new("UIGradient", p)
+    g.Color = ColorSequence.new({ColorSequenceKeypoint.new(0,c0), ColorSequenceKeypoint.new(1,c1)})
+    g.Rotation = rot or 145; return g
+end
+local function lbl(parent, props)
+    local l = Instance.new("TextLabel", parent)
+    l.BackgroundTransparency = 1; l.BorderSizePixel = 0
+    l.Font = Enum.Font.GothamBold; l.TextXAlignment = Enum.TextXAlignment.Left
+    for k,v in pairs(props) do l[k] = v end; return l
+end
+
+-- ============================================================
+-- BUILD GUI
+-- ============================================================
+local existing = getGuiParent():FindFirstChild("EpicnMarAPSpamGui")
+if existing then existing:Destroy() end
+
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "EpicnMar Ap Spam"
+GUI.ResetOnSpawn = false
+GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+GUI.DisplayOrder = 15
+GUI.Parent = getGuiParent()
+
+-- Drop shadow
+local Shadow = Instance.new("Frame", GUI)
+Shadow.Size = UDim2.new(0, 310, 0, 430)
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.Position = UDim2.fromScale(0.5, 0.5)
+Shadow.BackgroundColor3 = Color3.fromRGB(0,0,0)
+Shadow.BackgroundTransparency = 0.55
+Shadow.BorderSizePixel = 0
+corner(Shadow, 26)
+
+-- Main frame
+local Main = Instance.new("Frame", GUI)
+Main.Size = UDim2.new(0, 290, 0, 410)
+Main.AnchorPoint = Vector2.new(0.5, 0.5)
+Main.Position = UDim2.fromScale(0.5, 0.5)
+Main.BackgroundColor3 = C.BG
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+corner(Main, 20)
+grad(Main, C.BGDeep, C.BGSurface, 145)
+local mainStroke = stroke(Main, C.Accent, 1.5, 0.25)
+
+-- Top accent line
+local AccBar = Instance.new("Frame", Main)
+AccBar.Size = UDim2.new(1,0,0,2)
+AccBar.BackgroundColor3 = C.Accent
+AccBar.BorderSizePixel = 0
+local abg = Instance.new("UIGradient", AccBar)
+abg.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, C.AccentDim),
+    ColorSequenceKeypoint.new(0.4, C.AccentGlow),
+    ColorSequenceKeypoint.new(0.6, C.AccentGlow),
+    ColorSequenceKeypoint.new(1, C.AccentDim),
+})
+
+-- Top bar
+local TopBar = Instance.new("Frame", Main)
+TopBar.Size = UDim2.new(1,-16,0,38)
+TopBar.Position = UDim2.new(0,8,0,8)
+TopBar.BackgroundColor3 = C.BGDeep
+TopBar.BackgroundTransparency = 0.35
+TopBar.BorderSizePixel = 0
+corner(TopBar, 11)
+
+lbl(TopBar, {Position=UDim2.new(0,12,0,0), Size=UDim2.new(0,56,1,0), Text="EpicnMar",
+    Font=Enum.Font.GothamBlack, TextSize=14, TextColor3=C.AccentGlow})
+lbl(TopBar, {Position=UDim2.new(0,70,0,0), Size=UDim2.new(0,80,1,0), Text=" APSpammer",
+    Font=Enum.Font.GothamBold, TextSize=14, TextColor3=C.TextSub})
+
+local CloseBtn = Instance.new("TextButton", TopBar)
+CloseBtn.Size = UDim2.fromOffset(24,24)
+CloseBtn.Position = UDim2.new(1,-30,0.5,-12)
+CloseBtn.BackgroundColor3 = C.BGSurface
+CloseBtn.Text = "X"; CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 11; CloseBtn.TextColor3 = C.Danger
+CloseBtn.BorderSizePixel = 0
+corner(CloseBtn, 7); stroke(CloseBtn, Color3.fromRGB(70,15,15), 1, 0.4)
+
+-- Drag
+local dragging, dragStart, startPos
+TopBar.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+        dragging=true; dragStart=inp.Position; startPos=Main.Position
+        inp.Changed:Connect(function() if inp.UserInputState==Enum.UserInputState.End then dragging=false end end)
+    end
+end)
+TopBar.InputChanged:Connect(function(inp)
+    if (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) and dragging then
+        local d=inp.Position-dragStart
+        Main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+        Shadow.Position=UDim2.new(Main.Position.X.Scale,Main.Position.X.Offset,Main.Position.Y.Scale,Main.Position.Y.Offset)
+    end
+end)
+
+-- Reopen button
+local ReopenBtn = Instance.new("TextButton", GUI)
+ReopenBtn.Size = UDim2.new(0,110,0,28)
+ReopenBtn.Position = UDim2.new(0,10,0,90)
+ReopenBtn.BackgroundColor3 = C.BGDeep
+ReopenBtn.Text = "AP SPAM"
+ReopenBtn.Font = Enum.Font.GothamBlack
+ReopenBtn.TextSize = 11; ReopenBtn.TextColor3 = C.AccentGlow
+ReopenBtn.Visible = false; ReopenBtn.ZIndex = 999; ReopenBtn.BorderSizePixel = 0
+corner(ReopenBtn, 9); stroke(ReopenBtn, C.Accent, 1.5, 0.3)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    Main.Visible=false; Shadow.Visible=false; ReopenBtn.Visible=true
+end)
+ReopenBtn.MouseButton1Click:Connect(function()
+    Main.Visible=true; Shadow.Visible=true; ReopenBtn.Visible=false
+end)
+
+local rbDrag, rbStart, rbPos
+ReopenBtn.InputBegan:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+        rbDrag=true; rbStart=inp.Position; rbPos=ReopenBtn.Position
+        inp.Changed:Connect(function() if inp.UserInputState==Enum.UserInputState.End then rbDrag=false end end)
+    end
+end)
+ReopenBtn.InputChanged:Connect(function(inp)
+    if (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) and rbDrag then
+        local d=inp.Position-rbStart
+        ReopenBtn.Position=UDim2.new(rbPos.X.Scale,rbPos.X.Offset+d.X,rbPos.Y.Scale,rbPos.Y.Offset+d.Y)
+        rbStart=inp.Position; rbPos=ReopenBtn.Position
+    end
+end)
+
+-- ============================================================
+-- CONTENT
+-- ============================================================
+local Body = Instance.new("Frame", Main)
+Body.Size = UDim2.new(1,-16,1,-54)
+Body.Position = UDim2.new(0,8,0,50)
+Body.BackgroundTransparency = 1
+Body.BorderSizePixel = 0
+
+local BList = Instance.new("UIListLayout", Body)
+BList.Padding = UDim.new(0,6)
+BList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+BList.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- ============================================================
+-- SPAM BUTTON
+-- ============================================================
+local SpamOuter = Instance.new("Frame", Body)
+SpamOuter.Size = UDim2.new(1,0,0,60)
+SpamOuter.BackgroundColor3 = C.AccentDim
+SpamOuter.BackgroundTransparency = 0.1
+SpamOuter.BorderSizePixel = 0
+SpamOuter.LayoutOrder = 1
+corner(SpamOuter, 12)
+stroke(SpamOuter, C.AccentGlow, 1.5, 0.35)
+grad(SpamOuter, Color3.fromRGB(55,8,42), Color3.fromRGB(32,6,26), 145)
+
+local SpamBtn = Instance.new("TextButton", SpamOuter)
+SpamBtn.Size = UDim2.new(1,0,1,0); SpamBtn.BackgroundTransparency=1
+SpamBtn.Text = ""; SpamBtn.BorderSizePixel=0
+
+lbl(SpamOuter, {Position=UDim2.new(0,16,0,10), Size=UDim2.new(1,-100,0,20),
+    Text="SPAM COMMANDS", Font=Enum.Font.GothamBlack, TextSize=15, TextColor3=C.TextPri})
+lbl(SpamOuter, {Position=UDim2.new(0,16,0,30), Size=UDim2.new(1,-100,0,16),
+    Text="Click chip to rebind key", TextSize=9, TextColor3=C.TextSub})
+
+-- Key chip
+local KeyChip = Instance.new("TextButton", SpamOuter)
+KeyChip.Size = UDim2.new(0,58,0,28)
+KeyChip.Position = UDim2.new(1,-68,0.5,-14)
+KeyChip.BackgroundColor3 = C.BGDeep; KeyChip.BackgroundTransparency=0.1
+KeyChip.Text = spamKey
+KeyChip.Font = Enum.Font.GothamBlack; KeyChip.TextSize=14
+KeyChip.TextColor3 = C.AccentGlow; KeyChip.AutoButtonColor=false
+KeyChip.BorderSizePixel=0
+corner(KeyChip, 8)
+local chipS = stroke(KeyChip, C.AccentDim, 1.5, 0.25)
+
+local function flashSpam()
+    TweenService:Create(SpamOuter, TweenInfo.new(0.05), {BackgroundColor3=C.Accent}):Play()
+    task.delay(0.14, function()
+        TweenService:Create(SpamOuter, TweenInfo.new(0.2), {BackgroundColor3=C.AccentDim}):Play()
+    end)
+end
+
+SpamBtn.MouseButton1Click:Connect(function() flashSpam(); doSpam() end)
+
+local function startRebind()
+    if rebinding then return end
+    rebinding = true
+    KeyChip.Text = "..."; KeyChip.TextColor3 = C.Gold; chipS.Color = C.Gold
+
+    rebindConn = UserInputService.InputBegan:Connect(function(inp, _)
+        if inp.UserInputType == Enum.UserInputType.Keyboard then
+            if inp.KeyCode == Enum.KeyCode.Escape then
+                KeyChip.Text = spamKey; KeyChip.TextColor3 = C.AccentGlow; chipS.Color = C.AccentDim
+                rebindConn:Disconnect(); rebindConn=nil; rebinding=false; return
+            end
+            local n = inp.KeyCode.Name
+            if n ~= "Unknown" then
+                spamKey = n
+                KeyChip.Text = #n <= 1 and n or n:sub(1,5):upper()
+                KeyChip.TextColor3 = C.AccentGlow; chipS.Color = C.AccentDim
+                rebindConn:Disconnect(); rebindConn=nil; rebinding=false
+            end
+        end
+    end)
+end
+
+KeyChip.MouseButton1Click:Connect(function()
+    if rebinding then
+        KeyChip.Text = spamKey; KeyChip.TextColor3 = C.AccentGlow; chipS.Color = C.AccentDim
+        if rebindConn then rebindConn:Disconnect(); rebindConn=nil end; rebinding=false
+    else startRebind() end
+end)
+
+-- ============================================================
+-- SECTION LABEL
+-- ============================================================
+local function secLbl(text, order)
+    local l = Instance.new("TextLabel", Body)
+    l.Size = UDim2.new(1,0,0,14)
+    l.BackgroundTransparency = 1; l.BorderSizePixel = 0
+    l.Font = Enum.Font.GothamBold; l.TextSize = 9
+    l.TextColor3 = C.AccentSoft; l.Text = text:upper()
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.LayoutOrder = order
+end
+
+-- ============================================================
+-- COMMAND CHECKBOXES (2-column grid)
+-- ============================================================
+secLbl("Select Commands to Spam", 2)
+
+local GridOuter = Instance.new("Frame", Body)
+GridOuter.Size = UDim2.new(1,0,0,0)  -- auto-sized below
+GridOuter.BackgroundColor3 = C.BGSurface
+GridOuter.BackgroundTransparency = 0.15
+GridOuter.BorderSizePixel = 0
+GridOuter.LayoutOrder = 3
+GridOuter.ClipsDescendants = false
+corner(GridOuter, 10)
+stroke(GridOuter, C.Accent, 1, 0.78)
+
+local GridLayout = Instance.new("UIGridLayout", GridOuter)
+GridLayout.CellSize = UDim2.new(0.5, -9, 0, 30)
+GridLayout.CellPadding = UDim2.new(0, 6, 0, 5)
+GridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local GridPad = Instance.new("UIPadding", GridOuter)
+GridPad.PaddingTop = UDim.new(0,8); GridPad.PaddingBottom = UDim.new(0,8)
+GridPad.PaddingLeft = UDim.new(0,8); GridPad.PaddingRight = UDim.new(0,8)
+
+-- auto height
+local rows = math.ceil(#ALL_CMDS / 2)
+local gridH = rows * 30 + (rows-1)*5 + 16
+GridOuter.Size = UDim2.new(1,0,0,gridH)
+
+local checkRefs = {}
+
+for i, cmd in ipairs(ALL_CMDS) do
+    local row = Instance.new("Frame", GridOuter)
+    row.BackgroundColor3 = C.BGRaised
+    row.BackgroundTransparency = 0.2
+    row.BorderSizePixel = 0
+    row.LayoutOrder = i
+    corner(row, 7)
+    local rowS = stroke(row, C.Accent, 1, 0.82)
+
+    local active = false
+
+    -- checkbox square
+    local cb = Instance.new("Frame", row)
+    cb.Size = UDim2.new(0,14,0,14)
+    cb.Position = UDim2.new(0,7,0.5,-7)
+    cb.BackgroundColor3 = C.BGDeep; cb.BorderSizePixel=0
+    corner(cb, 4)
+    local cbS = stroke(cb, C.AccentDim, 1, 0.3)
+
+    local tick = Instance.new("TextLabel", cb)
+    tick.Size = UDim2.new(1,0,1,0); tick.BackgroundTransparency=1
+    tick.Text = ""; tick.Font=Enum.Font.GothamBlack; tick.TextSize=11
+    tick.TextColor3 = C.TextPri; tick.TextXAlignment=Enum.TextXAlignment.Center
+
+    local cmdLbl = lbl(row, {
+        Position=UDim2.new(0,26,0,0), Size=UDim2.new(1,-30,1,0),
+        Text=cmd, TextSize=11, TextColor3=C.TextSub,
+    })
+
+    local function setActive(state)
+        active = state
+        selectedCmds[cmd] = state
+        TweenService:Create(cb, TweenInfo.new(0.14), {BackgroundColor3=state and C.Accent or C.BGDeep}):Play()
+        cbS.Color = state and C.AccentGlow or C.AccentDim
+        tick.Text = state and "+" or ""
+        cmdLbl.TextColor3 = state and C.TextPri or C.TextSub
+        TweenService:Create(rowS, TweenInfo.new(0.14), {
+            Color=state and C.StateOn or C.Accent,
+            Transparency=state and 0.45 or 0.82,
+        }):Play()
+    end
+
+    local clk = Instance.new("TextButton", row)
+    clk.Size=UDim2.new(1,0,1,0); clk.BackgroundTransparency=1
+    clk.Text=""; clk.ZIndex=5
+    clk.MouseButton1Click:Connect(function() setActive(not active) end)
+
+    checkRefs[cmd] = setActive
+end
+
+-- ============================================================
+-- SELECT ALL / CLEAR
+-- ============================================================
+local BtnRow = Instance.new("Frame", Body)
+BtnRow.Size = UDim2.new(1,0,0,28)
+BtnRow.BackgroundTransparency = 1
+BtnRow.BorderSizePixel = 0
+BtnRow.LayoutOrder = 4
+
+local selAll = Instance.new("TextButton", BtnRow)
+selAll.Size = UDim2.new(0.5,-4,1,0)
+selAll.Position = UDim2.new(0,0,0,0)
+selAll.BackgroundColor3 = C.BGSurface; selAll.BackgroundTransparency=0.2
+selAll.Text = "Select All"; selAll.Font=Enum.Font.GothamBold
+selAll.TextSize=11; selAll.TextColor3=C.TextSub; selAll.BorderSizePixel=0
+corner(selAll,7); stroke(selAll, C.AccentDim, 1, 0.6)
+selAll.MouseButton1Click:Connect(function()
+    for _, cmd in ipairs(ALL_CMDS) do if checkRefs[cmd] then checkRefs[cmd](true) end end
+end)
+
+local clearAll = Instance.new("TextButton", BtnRow)
+clearAll.Size = UDim2.new(0.5,-4,1,0)
+clearAll.Position = UDim2.new(0.5,4,0,0)
+clearAll.BackgroundColor3 = C.BGSurface; clearAll.BackgroundTransparency=0.2
+clearAll.Text = "Clear All"; clearAll.Font=Enum.Font.GothamBold
+clearAll.TextSize=11; clearAll.TextColor3=C.TextSub; clearAll.BorderSizePixel=0
+corner(clearAll,7); stroke(clearAll, C.AccentDim, 1, 0.6)
+clearAll.MouseButton1Click:Connect(function()
+    for _, cmd in ipairs(ALL_CMDS) do if checkRefs[cmd] then checkRefs[cmd](false) end end
+end)
+
+-- ============================================================
+-- GLOBAL KEYBIND
+-- ============================================================
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if rebinding then return end
+    if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    if inp.KeyCode.Name == spamKey then flashSpam(); doSpam() end
+end)
+
+-- Pulse border
+RunService.Heartbeat:Connect(function()
+    mainStroke.Transparency = 0.25 + math.sin(tick()*2)*0.1
+end)
+
+print("[EpicnMar Ap Spam] Loaded.")
